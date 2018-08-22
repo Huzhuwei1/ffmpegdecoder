@@ -13,6 +13,10 @@ import java.io.InputStreamReader;
  */
 
 public class GlShaderUtils {
+
+
+
+
     public static String readRawTextFile(Context context, int resId) {
         InputStream inputStream = context.getResources().openRawResource(resId);
         try {
