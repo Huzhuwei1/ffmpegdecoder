@@ -5,7 +5,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -45,6 +44,7 @@ public class MainActivity extends AppCompatActivity {
         mGlSurfaceView = findViewById(R.id.gl_surfaceview);
 
         mEtInput.setText("/storage/emulated/0/test.264");
+        mEtInput.setText("http://pl3.live.panda.tv/live_panda/6caa1a47e48075c86f2b77a2147cfeed_mid.flv?sign=89b4da2f621e3b4f66fe447a40a170a6&time=&ts=5b86382a&rid=-59982825");
         mGlSurfaceView.setOnCaptureListener(new MyGlRender.ScreenCaptureListener() {
             @Override
             public void onCapture(final Bitmap bitmap) {
