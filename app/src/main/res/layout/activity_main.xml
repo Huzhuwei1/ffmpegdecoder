@@ -25,6 +25,16 @@
         android:id="@+id/gl_surfaceview"
         android:layout_width="match_parent"
         android:layout_height="300dp"/>
+        <ImageView
+            android:id="@+id/img"
+            android:layout_width="100dp"
+            android:layout_height="100dp"/>
+        <Button
+            android:id="@+id/bt_capture"
+            android:onClick="onClick"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="截屏"/>
     </LinearLayout>
     <LinearLayout
         android:layout_gravity="bottom"
