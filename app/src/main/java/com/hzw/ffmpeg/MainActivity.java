@@ -1,14 +1,19 @@
 package com.hzw.ffmpeg;
 
+import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import opengles.MyGlRender;
 import opengles.MyGlSurfaceView;
 
 public class MainActivity extends AppCompatActivity {
@@ -21,7 +26,9 @@ public class MainActivity extends AppCompatActivity {
     private MyGlSurfaceView mGlSurfaceView;
     private EditText mEtInput;
     private Button mBtStart;
+    private ImageView img;
 
+    private Button mBtCapture;
     Handler mHandler = new Handler();
 
     @Override
@@ -34,14 +41,29 @@ public class MainActivity extends AppCompatActivity {
         tv.setText(stringFromJNI());
         mEtInput = findViewById(R.id.et_input);
         mBtStart = findViewById(R.id.bt_start);
+        mBtCapture = findViewById(R.id.bt_capture);
+        img = findViewById(R.id.img);
         mGlSurfaceView = findViewById(R.id.gl_surfaceview);
 
         mEtInput.setText("/storage/emulated/0/test.264");
+        Log.e("decCallBack","::"+Thread.currentThread().getName());
+        mGlSurfaceView.setOnCaptureListener(new MyGlRender.ScreenCaptureListener() {
+            @Override
+            public void onCapture(final Bitmap bitmap) {
+                mHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        img.setImageBitmap(bitmap);
+                    }
+                });
+            }
+        });
     }
 
     public void decCallBack(int w, int h, byte[] y, byte[] u, byte[] v){
 //        Log.e("decCallBack","数据来啦：");
         mGlSurfaceView.setFrameData(w,h,y,u,v);
+        Log.e("decCallBack","::"+Thread.currentThread().getName());
     }
 
     public void onClick(View v){
@@ -51,6 +73,10 @@ public class MainActivity extends AppCompatActivity {
                     init(mEtInput.getText().toString());
                     start();
                 }
+                break;
+            case R.id.bt_capture:
+                mGlSurfaceView.capture();
+                Toast.makeText(this,"hhhhh",Toast.LENGTH_SHORT).show();
                 break;
                 default:break;
         }
