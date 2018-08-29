@@ -11,7 +11,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import opengles.MyGlRender;
 import opengles.MyGlSurfaceView;
@@ -46,7 +45,6 @@ public class MainActivity extends AppCompatActivity {
         mGlSurfaceView = findViewById(R.id.gl_surfaceview);
 
         mEtInput.setText("/storage/emulated/0/test.264");
-        Log.e("decCallBack","::"+Thread.currentThread().getName());
         mGlSurfaceView.setOnCaptureListener(new MyGlRender.ScreenCaptureListener() {
             @Override
             public void onCapture(final Bitmap bitmap) {
@@ -63,7 +61,6 @@ public class MainActivity extends AppCompatActivity {
     public void decCallBack(int w, int h, byte[] y, byte[] u, byte[] v){
 //        Log.e("decCallBack","数据来啦：");
         mGlSurfaceView.setFrameData(w,h,y,u,v);
-        Log.e("decCallBack","::"+Thread.currentThread().getName());
     }
 
     public void onClick(View v){
@@ -76,7 +73,6 @@ public class MainActivity extends AppCompatActivity {
                 break;
             case R.id.bt_capture:
                 mGlSurfaceView.capture();
-                Toast.makeText(this,"hhhhh",Toast.LENGTH_SHORT).show();
                 break;
                 default:break;
         }
