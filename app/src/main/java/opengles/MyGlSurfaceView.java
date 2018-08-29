@@ -42,8 +42,7 @@ public class MyGlSurfaceView extends GLSurfaceView{
     }
 
     public void setOnCaptureListener(MyGlRender.ScreenCaptureListener listener) {
-        if(listener != null)
-        {
+        if(listener != null) {
             mGlRender.setListener(listener);
         }
     }
