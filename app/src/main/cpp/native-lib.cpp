@@ -1,46 +1,66 @@
 #include <jni.h>
 #include <string>
 #include <android/log.h>
-
-
-const char *url;
-jmethodID jmid_dec_callback;
-jobject jobj;
+#include <pthread.h>
 
 extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 #include "libswscale/swscale.h"
+}
+const char *url;
+jmethodID jmid_dec_callback;
+jobject jobj;//全局的
+
+JavaVM* jvm;//全局的
+#include <queue>
+std::queue<AVFrame*> queue;
+pthread_t pthread;
+pthread_t decode_pthread;
+pthread_mutex_t pthread_mutex;
+pthread_cond_t pthread_cond;
+bool flag = true;
+
 
 
 
 #define  LOG_TAG    "ffmpegdecoder"
 #define  LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 
-JNIEXPORT jstring JNICALL
-Java_com_hzw_ffmpeg_MainActivity_stringFromJNI(
-        JNIEnv *env,
-        jobject /* this */) {
-    std::string hello = "Hello from C++";
-    return env->NewStringUTF(hello.c_str());
-}
 
-JNIEXPORT void JNICALL
-Java_com_hzw_ffmpeg_MainActivity_init(JNIEnv *env, jobject obj, jstring jurl) {
-    url = env->GetStringUTFChars(jurl, 0);
-    jobj = env->NewGlobalRef(obj);
-    jclass  jlz = env->GetObjectClass(jobj);
-    if(!jlz) {
-        LOGD("find jclass faild");
-        return ;
+void* jCallback(void* data){
+    while (flag){
+        pthread_mutex_lock(&pthread_mutex);
+        if (queue.size()>0){
+            //回调java层
+            AVFrame* pFrame = queue.front();
+            JNIEnv *env;
+            jvm->AttachCurrentThread(&env, 0);
+            int width = pFrame->width;
+            int height = pFrame->height;
+            jbyteArray y = env->NewByteArray(width * height);
+            env->SetByteArrayRegion(y, 0, width * height, (jbyte*)pFrame->data[0]);
+            jbyteArray u = env->NewByteArray(width * height / 4);
+            env->SetByteArrayRegion(u, 0, width * height / 4, (jbyte*)pFrame->data[1]);
+            jbyteArray v = env->NewByteArray(width * height / 4);
+            env->SetByteArrayRegion(v, 0, width * height / 4, (jbyte*)pFrame->data[2]);
+            env->CallVoidMethod(jobj, jmid_dec_callback, width, height, y, u, v);
+            env->DeleteLocalRef(y);
+            env->DeleteLocalRef(u);
+            env->DeleteLocalRef(v);
+            jvm->DetachCurrentThread();
+            queue.pop();
+            LOGD("nnnnnnnnnnnnnnnn");
+            av_frame_free(&pFrame);
+        } else {
+            pthread_cond_wait(&pthread_cond,&pthread_mutex);
+        }
+        pthread_mutex_unlock(&pthread_mutex);
     }
-    jmid_dec_callback = env->GetMethodID(jlz, "decCallBack", "(II[B[B[B)V");
+    pthread_exit(&pthread);
 }
 
-
-
-JNIEXPORT void JNICALL
-Java_com_hzw_ffmpeg_MainActivity_start(JNIEnv *env, jobject obj) {
+void* p_decode(void* data){
     //1.注册所有组件
     av_register_all();
 
@@ -50,13 +70,13 @@ Java_com_hzw_ffmpeg_MainActivity_start(JNIEnv *env, jobject obj) {
     //2.打开输入视频文件
     if (avformat_open_input(&pFormatCtx, url, NULL, NULL) != 0) {
         LOGD("%s","无法打开输入视频文件");
-        return ;
+        return 0;
     }
 
     //3.获取视频文件信息
     if (avformat_find_stream_info(pFormatCtx,NULL) < 0) {
         LOGD("%s","无法获取视频文件信息");
-        return ;
+        return 0;
     }
 
     //获取视频流的索引位置
@@ -74,7 +94,7 @@ Java_com_hzw_ffmpeg_MainActivity_start(JNIEnv *env, jobject obj) {
 
     if (v_stream_idx == -1) {
         LOGD("%s","找不到视频流\n");
-        return ;
+        return 0;
     }
 
     //只有知道视频的编码方式，才能够根据编码方式去找到解码器
@@ -84,13 +104,13 @@ Java_com_hzw_ffmpeg_MainActivity_start(JNIEnv *env, jobject obj) {
     AVCodec *pCodec = avcodec_find_decoder(pCodecCtx->codec_id);
     if (pCodec == NULL) {
         LOGD("%s","找不到解码器\n");
-        return ;
+        return 0;
     }
 
     //5.打开解码器
     if (avcodec_open2(pCodecCtx,pCodec,NULL)<0) {
         LOGD("%s","解码器无法打开\n");
-        return ;
+        return 0;
     }
 
     //输出视频信息
@@ -106,7 +126,7 @@ Java_com_hzw_ffmpeg_MainActivity_start(JNIEnv *env, jobject obj) {
 
     //AVFrame用于存储解码后的像素数据(YUV)
     //内存分配
-    AVFrame *pFrame = av_frame_alloc();
+//    AVFrame *pFrame = av_frame_alloc();
     //YUV420
     AVFrame *pFrameYUV = av_frame_alloc();
     //只有指定了AVFrame的像素格式、画面大小才能真正分配内存
@@ -127,11 +147,13 @@ Java_com_hzw_ffmpeg_MainActivity_start(JNIEnv *env, jobject obj) {
     while (av_read_frame(pFormatCtx, packet) >= 0) {
         //只要视频压缩数据（根据流的索引位置判断）
         if (packet->stream_index == v_stream_idx) {
+            pthread_mutex_lock(&pthread_mutex);
             //7.解码一帧视频压缩数据，得到视频像素数据
+            AVFrame *pFrame = av_frame_alloc();
             ret = avcodec_decode_video2(pCodecCtx, pFrame, &got_picture, packet);
             if (ret < 0) {
                 LOGD("%s","解码错误");
-                return ;
+                return 0;
             }
 
             //为0说明解码完成，非0正在解码
@@ -151,35 +173,84 @@ Java_com_hzw_ffmpeg_MainActivity_start(JNIEnv *env, jobject obj) {
                 int width = pFrame -> width;
                 int height = pFrame -> height;
 
-                jbyteArray y = env->NewByteArray(width * height);
-                env->SetByteArrayRegion(y, 0, width * height, (jbyte*)pFrame->data[0]);
+                queue.push(pFrame);
 
-                jbyteArray u = env->NewByteArray(width * height / 4);
-                env->SetByteArrayRegion(u, 0, width * height / 4, (jbyte*)pFrame->data[1]);
+                pthread_cond_signal(&pthread_cond);
 
-                jbyteArray v = env->NewByteArray(width * height / 4);
-                env->SetByteArrayRegion(v, 0, width * height / 4, (jbyte*)pFrame->data[2]);
-
-                env->CallVoidMethod(jobj, jmid_dec_callback, width, height, y, u, v);
-                env->DeleteLocalRef(y);
-                env->DeleteLocalRef(u);
-                env->DeleteLocalRef(v);
+//                jbyteArray y = env->NewByteArray(width * height);
+//                env->SetByteArrayRegion(y, 0, width * height, (jbyte*)pFrame->data[0]);
+//
+//                jbyteArray u = env->NewByteArray(width * height / 4);
+//                env->SetByteArrayRegion(u, 0, width * height / 4, (jbyte*)pFrame->data[1]);
+//
+//                jbyteArray v = env->NewByteArray(width * height / 4);
+//                env->SetByteArrayRegion(v, 0, width * height / 4, (jbyte*)pFrame->data[2]);
+//
+//                env->CallVoidMethod(jobj, jmid_dec_callback, width, height, y, u, v);
+//                env->DeleteLocalRef(y);
+//                env->DeleteLocalRef(u);
+//                env->DeleteLocalRef(v);
 
                 frame_count++;
                 LOGD("解码第%d帧\n",frame_count);
             }
+            pthread_mutex_unlock(&pthread_mutex);
         }
 
         //释放资源
         av_free_packet(packet);
     }
 
-    av_frame_free(&pFrame);
+
 
     avcodec_close(pCodecCtx);
 
     avformat_close_input(&pFormatCtx);
     avformat_free_context(pFormatCtx);
+    flag = false;
+    pthread_exit(&decode_pthread);
 }
 
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_hzw_ffmpeg_MainActivity_stringFromJNI(
+        JNIEnv *env,
+        jobject /* this */) {
+    std::string hello = "Hello from C++";
+    return env->NewStringUTF(hello.c_str());
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_hzw_ffmpeg_MainActivity_init(JNIEnv *env, jobject obj, jstring jurl) {
+    url = env->GetStringUTFChars(jurl, 0);
+    jobj = env->NewGlobalRef(obj);
+    jclass  jlz = env->GetObjectClass(jobj);
+    if(!jlz) {
+        LOGD("find jclass faild");
+        return ;
+    }
+    jmid_dec_callback = env->GetMethodID(jlz, "decCallBack", "(II[B[B[B)V");
+    pthread_cond_init(&pthread_cond,NULL);
+    pthread_mutex_init(&pthread_mutex,NULL);
+    pthread_create(&pthread,NULL,jCallback,NULL);
+}
+
+
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_hzw_ffmpeg_MainActivity_start(JNIEnv *env, jobject obj) {
+    pthread_create(&decode_pthread,NULL,p_decode,NULL);
+
+}
+
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm,void* reserved){
+    JNIEnv *env;
+    jvm = vm;
+    if(vm->GetEnv((void**)&env,JNI_VERSION_1_6)!=JNI_OK){
+        return -1;
+    }
+    return JNI_VERSION_1_6;
 }
